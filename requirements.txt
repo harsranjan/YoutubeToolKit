@@ -10,3 +10,4 @@ Pillow
 yt-dlp
 scikit-image
 scipy
+en_core_web_sm
