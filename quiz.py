@@ -2,20 +2,34 @@ import streamlit as st
 from transformers import pipeline, T5Tokenizer
 import spacy
 import nltk
+import torch
 
+# Download required nltk tokenizer data
 nltk.download('punkt')
+
+# Load the spaCy language model
 nlp = spacy.load("en_core_web_sm")
+
+# Load the T5 tokenizer
 tokenizer = T5Tokenizer.from_pretrained("valhalla/t5-small-qg-hl", use_fast=False)
 
+# Initialize the question-generation pipeline.
+# The parameters `device_map="auto"` and `torch_dtype=torch.float32` ensure proper loading,
+# avoiding the casting issue with GPTQ models.
 qg_pipeline = pipeline(
     "text2text-generation",
     model="valhalla/t5-small-qg-hl",
-    tokenizer=tokenizer
+    tokenizer=tokenizer,
+    device_map="auto",
+    torch_dtype=torch.float32
 )
 
+# Initialize the summarization pipeline similarly.
 summarizer_pipeline = pipeline(
     "summarization",
     model="sshleifer/distilbart-cnn-12-6",
+    device_map="auto",
+    torch_dtype=torch.float32,
     use_fast=True
 )
 
@@ -48,7 +62,7 @@ st.markdown(
 def generate_flashcards(summary_text, min_words=5, max_questions=50):
     flashcards = []
     doc = nlp(summary_text)
-
+    
     for sent in doc.sents:
         if len(flashcards) >= max_questions:
             break
@@ -57,9 +71,14 @@ def generate_flashcards(summary_text, min_words=5, max_questions=50):
         if len(sent_text.split()) < min_words:
             continue
 
-        noun_chunks = list(sent.noun_chunks)
-        candidate = noun_chunks[0].text.strip() if noun_chunks else sent_text.split()[0]
+        # Use a named entity if available for more relevant questions; otherwise fall back on noun chunks.
+        if sent.ents:
+            candidate = sent.ents[0].text.strip()
+        else:
+            noun_chunks = list(sent.noun_chunks)
+            candidate = noun_chunks[0].text.strip() if noun_chunks else sent_text.split()[0]
 
+        # Highlight the candidate in the sentence.
         if candidate in sent_text:
             highlighted_sent = sent_text.replace(candidate, f"<hl> {candidate} <hl>", 1)
         else:
@@ -69,11 +88,12 @@ def generate_flashcards(summary_text, min_words=5, max_questions=50):
         try:
             output = qg_pipeline(input_text)
             generated = output[0]['generated_text'].strip()
+            # If the generated output follows a Q:/A: format, extract question and answer.
             if "Q:" in generated and "A:" in generated:
                 q_part = generated.split("A:")[0].replace("Q:", "").strip()
                 a_part = generated.split("A:")[1].strip()
                 if q_part and a_part:
-                    flashcards.append({"question": q_part, "answer": a_part})
+                    flashcards.append({"question": q_part, "answer": sent_text})
                     continue
             if generated:
                 flashcards.append({"question": generated, "answer": sent_text})
