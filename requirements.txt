@@ -2,3 +2,11 @@ streamlit>=1.18.0
 transformers>=4.36.0
 youtube-transcript-api>=0.6.1
 torch>=1.10.0
+spacy>=3.0
+nltk
+opencv-python
+fpdf
+Pillow
+yt-dlp
+scikit-image
+scipy
